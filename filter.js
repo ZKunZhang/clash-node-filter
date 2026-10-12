@@ -2,6 +2,11 @@
   "use strict";
   const AUTO = "自动选择（排除香港）";
   const SELECT = "节点选择";
+  const DNS_CONFIG = {
+    enable: true,
+    "enhanced-mode": "fake-ip",
+    nameserver: ["223.5.5.5", "119.29.29.29"],
+  };
   const HK =
     /香港|香江|港区|港區|🇭🇰|hong[\s_-]*kong|(?:^|[^a-z])hk(?:$|[^a-z])/i;
   const NOTICE =
@@ -90,10 +95,21 @@
   }
   function combine(sources) {
     if (!sources.length) throw new Error("请先读取订阅或导入 YAML。");
-    return sources.flatMap((source, index) => {
+    const usedNames = new Set();
+    return sources.flatMap((source) => {
       const nodes = parseSource(source.text, source.label);
+      const label = String(source.label || "未命名机场")
+        .trim()
+        .replace(/\.(?:ya?ml|txt)$/i, "") || "未命名机场";
       const refs = new Map(
-        nodes.map((n) => [n.name, `订阅${index + 1} · ${n.name}`]),
+        nodes.map((n) => {
+          const base = `${label} · ${n.name}`;
+          let name = base;
+          let suffix = 2;
+          while (usedNames.has(name)) name = `${base} (${suffix++})`;
+          usedNames.add(name);
+          return [n.name, name];
+        }),
       );
       return nodes.map((node) => {
         const originalName = node.name;
@@ -154,8 +170,8 @@
     const result = filter(records, options);
     if (!result.kept.length)
       throw new Error("过滤后没有可用候选节点，请调整排除规则。");
-    const interval = Number(options.interval ?? 180);
-    const tolerance = Number(options.tolerance ?? 50);
+    const interval = Number(options.interval ?? 120);
+    const tolerance = Number(options.tolerance ?? 30);
     if (!Number.isInteger(interval) || interval < 30 || interval > 3600)
       throw new Error("测速间隔需为 30–3600 秒的整数。");
     if (!Number.isInteger(tolerance) || tolerance < 0 || tolerance > 1000)
@@ -175,27 +191,38 @@
     )
       throw new Error("额外直连域名请填纯域名，不带 https://、路径或通配符。");
     const names = result.kept.map((r) => r.node.name);
+    const health = new Map((options.health || []).map((r) => [r.name, r]));
+    const delay = (record) => {
+      const value = health.get(record.id)?.delay;
+      return typeof value === "number" && Number.isFinite(value) && value > 0
+        ? value
+        : Infinity;
+    };
+    const automaticNames = [...result.kept]
+      .sort((a, b) => {
+        const left = delay(a), right = delay(b);
+        return left === right ? 0 : left < right ? -1 : 1;
+      })
+      .map((r) => r.node.name);
     const config = {
       "mixed-port": 7890,
       "allow-lan": false,
       mode: "rule",
       "log-level": "info",
-      dns: {
-        enable: true,
-        "enhanced-mode": "fake-ip",
-        nameserver: ["223.5.5.5", "119.29.29.29"],
-      },
+      dns: { ...DNS_CONFIG, nameserver: [...DNS_CONFIG.nameserver] },
       proxies: result.kept.map((r) => r.node),
       "proxy-groups": [
         { name: SELECT, type: "select", proxies: [AUTO, ...names] },
         {
           name: AUTO,
           type: "url-test",
-          proxies: names,
+          proxies: automaticNames,
           url: "https://www.gstatic.com/generate_204",
           interval,
           tolerance,
           lazy: false,
+          timeout: 5000,
+          "max-failed-times": 2,
           "expected-status": 204,
         },
       ],
@@ -228,6 +255,7 @@
   const api = {
     AUTO,
     SELECT,
+    DNS_CONFIG,
     DIRECT_DOMAINS,
     PROXY_DOMAINS,
     combine,

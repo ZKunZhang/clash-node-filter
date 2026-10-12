@@ -97,10 +97,30 @@ test("跨订阅重名节点保持唯一且保留完整协议参数", () => {
     tool.combine([source([original], "a"), source([original], "b")]),
   );
   const roundtrip = yaml.load(result.yaml);
-  assert.notEqual(roundtrip.proxies[0].name, roundtrip.proxies[1].name);
+  assert.deepEqual(roundtrip.proxies.map((p) => p.name), ["a · 日本", "b · 日本"]);
   for (const p of roundtrip.proxies)
     assert.deepEqual({ ...p, name: "日本" }, original);
   assert.equal(result.config["proxy-groups"][0].proxies[0], tool.AUTO);
+});
+test("机场文件名作为前缀；同名来源和节点冲突仍保留正确引用与检测结果", () => {
+  const records = tool.combine([
+    source([http("日本"), http("日本 (2)")], "机场甲.yaml"),
+    source([
+      http("日本"),
+      http("美国", { "dialer-proxy": "日本" }),
+    ], "机场甲.yml"),
+  ]);
+  assert.deepEqual(records.map((r) => r.id), [
+    "机场甲 · 日本",
+    "机场甲 · 日本 (2)",
+    "机场甲 · 日本 (3)",
+    "机场甲 · 美国",
+  ]);
+  const health = records.map((r) => ({ name: r.id, status: "ok" }));
+  const config = yaml.load(tool.generate(records, { health, requireHealthy: true }).yaml);
+  assert.equal(config.proxies[3]["dialer-proxy"], "机场甲 · 日本 (3)");
+  assert.deepEqual(config["proxy-groups"][1].proxies, records.map((r) => r.id));
+  assert.equal(records[3].originalName, "美国");
 });
 test("香港链式依赖被传递排除；正常引用重命名后保留", () => {
   const nodes = [
@@ -116,6 +136,28 @@ test("香港链式依赖被传递排除；正常引用重命名后保留", () =>
     ["日本", "C"],
   );
   assert.equal(result.kept[1].node["dialer-proxy"], result.kept[0].node.name);
+});
+test("自动组按有效检测延迟排序，保留同延迟顺序与原节点和引用", () => {
+  const records = tool.combine([source([
+    http("慢"), http("快"), http("同速", { "dialer-proxy": "慢" }),
+    http("未提供延迟"), http("无效延迟"), http("无限延迟"),
+  ], "机场")]);
+  const delays = [2200, 400, 400, undefined, true, Infinity];
+  const health = records.map((r, i) => ({ name: r.id, status: "ok", delay: delays[i] }));
+  const result = tool.generate(records, { health, requireHealthy: true });
+  assert.deepEqual(result.config["proxy-groups"][1].proxies, [
+    records[1].id, records[2].id, records[0].id,
+    records[3].id, records[4].id, records[5].id,
+  ]);
+  assert.deepEqual(result.config.proxies.map((p) => p.name), records.map((r) => r.id));
+  assert.equal(result.config.proxies[2]["dialer-proxy"], records[0].id);
+  assert.deepEqual(result.config["proxy-groups"][0].proxies, [tool.AUTO, ...records.map((r) => r.id)]);
+  const group = result.config["proxy-groups"][1];
+  assert.equal(group.interval, 120);
+  assert.equal(group.tolerance, 30);
+  assert.equal(group.timeout, 5000);
+  assert.equal(group["max-failed-times"], 2);
+  assert.equal(group.lazy, false);
 });
 test("关键词过滤也应用到依赖，并拒绝空结果", () => {
   const records = tool.combine([

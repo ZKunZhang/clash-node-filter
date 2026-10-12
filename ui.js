@@ -137,7 +137,9 @@ $("add-content").onclick = () =>
     if (!text) throw new Error("请先粘贴 YAML 内容。");
     if (new TextEncoder().encode(text).length > 8 * 1024 * 1024)
       throw new Error("内容不能超过 8 MB。");
-    const source = { label: `粘贴内容 ${fileSources.length + 1}`, text };
+    const label = $("source-name").value.trim();
+    if (!label) throw new Error("请填写粘贴内容的机场名称，用作导出节点的前缀。");
+    const source = { label, text };
     NodeFilter.combine([source]);
     fileSources.push(source);
     healthReport = null;
@@ -189,10 +191,11 @@ $("export").onclick = () =>
     if (online) {
       healthReport = null;
       status(
-        `开始检测 ${result.kept.length} 个候选节点，超时或失败会重试一次；可能需要数分钟…`,
+        `开始检测 ${result.kept.length} 个候选节点，通过后还会复测；可能需要数分钟…`,
       );
       const started = await api("/api/probe", {
         proxies: result.config.proxies,
+        dns: result.config.dns,
       });
       let job;
       do {
@@ -242,8 +245,8 @@ async function initialize() {
   $("urls").value = data.urls.join("\n");
   const prefs = data.preferences;
   $("keywords").value = prefs.keywords || "";
-  $("interval").value = prefs.interval ?? 180;
-  $("tolerance").value = prefs.tolerance ?? 50;
+  $("interval").value = prefs.interval ?? 120;
+  $("tolerance").value = prefs.tolerance ?? 30;
   $("direct-domains").value = prefs.directDomains || "";
   if (data.sources.length) NodeFilter.combine(data.sources);
   fileSources = data.sources;

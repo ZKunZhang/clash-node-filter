@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Local subscription fetcher; Python standard library only."""
 import argparse
+import base64
 import concurrent.futures
+import email.message
 import http.server
 import json
 import pathlib
@@ -17,7 +19,7 @@ import urllib.parse
 import urllib.request
 import webbrowser
 
-from probe import run_probe
+from probe import DNS_CONFIG, run_probe
 
 ROOT = pathlib.Path(__file__).resolve().parent
 LIMIT = 8 * 1024 * 1024
@@ -120,6 +122,7 @@ def fetch_source(pair):
         req = urllib.request.Request(url, headers={'User-Agent': 'Clash.Meta', 'Accept': 'application/yaml,text/yaml,*/*'})
         started = time.monotonic()
         with opener.open(req, timeout=15) as response:
+            label = subscription_label(response.headers, url)
             chunks, size = [], 0
             while True:
                 if time.monotonic() - started > 25:
@@ -140,6 +143,27 @@ def fetch_source(pair):
         return {'label': label, 'error': '请求超时，可导入客户端导出的 YAML。'}
     except Exception:
         return {'label': label, 'error': '下载失败，请检查网络或导入本地 YAML。'}
+
+
+def subscription_label(headers, url):
+    title = headers.get('profile-title', '').strip()
+    if title.startswith('base64:'):
+        try:
+            encoded = title[7:]
+            title = base64.b64decode(encoded + '=' * (-len(encoded) % 4), validate=True).decode('utf-8').strip()
+        except (ValueError, UnicodeError):
+            title = ''
+    if title:
+        return title
+    disposition = email.message.Message()
+    disposition['Content-Disposition'] = headers.get('Content-Disposition', '')
+    filename = disposition.get_filename()
+    if filename:
+        filename = urllib.parse.unquote(filename).replace('\\', '/').rsplit('/', 1)[-1]
+        name = pathlib.Path(filename).stem.strip()
+        if name:
+            return name
+    return urllib.parse.urlsplit(url).hostname or '未命名机场'
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -214,6 +238,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 proxies = body.get('proxies')
                 if not isinstance(proxies, list) or not 1 <= len(proxies) <= 1000:
                     raise ValueError('节点数量无效。')
+                if body.get('dns', DNS_CONFIG) != DNS_CONFIG:
+                    raise ValueError('检测 DNS 与导出配置不一致。')
                 core = core_path()
                 if not core:
                     self.send(503, {'error': '未找到 Mihomo 检测内核，请安装或放入 vendor 目录。'})

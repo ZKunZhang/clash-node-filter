@@ -1,13 +1,44 @@
 import http.client
+import base64
+import io
 import json
 import pathlib
 import tempfile
 import threading
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import app
+
+
+class SubscriptionNameTests(unittest.TestCase):
+    def test_subscription_names_and_fallbacks(self):
+        url = 'https://airport.example/sub?token=private'
+        encoded = base64.b64encode('机场甲'.encode()).decode().rstrip('=')
+        cases = [
+            ({'profile-title': '机场甲', 'Content-Disposition': 'attachment; filename="other.yaml"'}, '机场甲'),
+            ({'profile-title': 'base64:' + encoded}, '机场甲'),
+            ({'Content-Disposition': "attachment; filename*=UTF-8''%E6%9C%BA%E5%9C%BA%E4%B9%99.yaml"}, '机场乙'),
+            ({'Content-Disposition': 'attachment; filename="airport.yaml"'}, 'airport'),
+            ({'profile-title': 'base64:invalid!'}, 'airport.example'),
+            ({'profile-title': 'base64:/w=='}, 'airport.example'),
+            ({}, 'airport.example'),
+        ]
+        for headers, expected in cases:
+            with self.subTest(headers=headers):
+                self.assertEqual(app.subscription_label(headers, url), expected)
+
+    def test_fetch_returns_airport_name(self):
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.headers = {'profile-title': '机场甲'}
+        response.read1.side_effect = io.BytesIO(b'proxies: []').read
+        opener = MagicMock()
+        opener.open.return_value = response
+        with patch.object(app.urllib.request, 'build_opener', return_value=opener):
+            result = app.fetch_source((0, 'https://airport.example/sub?token=private'))
+        self.assertEqual(result, {'label': '机场甲', 'text': 'proxies: []'})
 
 
 class LocalServerTests(unittest.TestCase):
@@ -84,7 +115,8 @@ class LocalServerTests(unittest.TestCase):
             progress(1, 1)
             return {'checkedAt': 'test', 'testUrl': 'https://www.gstatic.com/generate_204', 'results': [{'name': 'Japan', 'status': 'ok', 'delay': 100}]}
         with patch.object(app, 'PROBES', jobs), patch.object(app, 'core_path', return_value='fake-core'), patch.object(app, 'run_probe', fixture):
-            status, body = self.request('POST', '/api/probe', {'proxies': [{'name': 'Japan'}]})
+            self.assertEqual(self.request('POST', '/api/probe', {'proxies': [{'name': 'Japan'}], 'dns': {'enable': False}})[0], 400)
+            status, body = self.request('POST', '/api/probe', {'proxies': [{'name': 'Japan'}], 'dns': app.DNS_CONFIG})
             self.assertEqual(status, 202)
             job_id = json.loads(body)['job']
             for _ in range(30):

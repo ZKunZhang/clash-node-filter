@@ -31,6 +31,8 @@
         <button id="fetch">读取并整合订阅</button>
         <label for="files">添加本地 YAML 文件 · 支持多个</label>
         <input id="files" type="file" accept=".yaml,.yml,.txt" multiple />
+        <label for="source-name">粘贴内容的机场名称</label>
+        <input id="source-name" type="text" placeholder="例如：我的机场" />
         <label for="content">也可以直接粘贴 Clash / Mihomo YAML 内容</label>
         <textarea
           id="content"
@@ -59,7 +61,7 @@
               type="number"
               min="30"
               max="3600"
-              value="180"
+              value="120"
             />
           </div>
           <div>
@@ -69,12 +71,12 @@
               type="number"
               min="0"
               max="1000"
-              value="50"
+              value="30"
             />
           </div>
         </div>
         <p class="muted">
-          每 3
+          每 2
           分钟检测连通性和延迟；容差减少小幅波动带来的频繁切换。低延迟不保证下载速度或网站解锁。
         </p>
         <p>
