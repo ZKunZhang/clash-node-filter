@@ -1,0 +1,34 @@
+# Private subscriptions, preferences and imported/generated proxy data.
+*.local.*
+/inputs/
+/output/
+*.yaml
+*.yml
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.log
+
+# Archives can contain private subscription credentials.
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.gz
+*.7z
+*.rar
+
+# Platform-specific external Mihomo executable, installed locally.
+/vendor/mihomo
+/vendor/mihomo.exe
+
+# Local caches and operating system metadata.
+__pycache__/
+*.pyc
+.DS_Store
+node_modules/
+.venv/
+venv/

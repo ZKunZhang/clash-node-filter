@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="session-token" content="__SESSION_TOKEN__" />
+    <title>节点整合工具</title>
+    <link rel="stylesheet" href="style.css" />
+    <script defer src="vendor/js-yaml.min.js"></script>
+    <script defer src="filter.js"></script>
+    <script defer src="ui.js"></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <span class="tag">本地工具 · Clash / Mihomo</span>
+        <h1>整合订阅，自动选节点</h1>
+        <p>
+          默认排除名称含香港标记的节点和订阅提示项。合并后的全部候选节点参与自动选择，无需切换订阅。
+        </p>
+      </header>
+      <section>
+        <h2>1. 输入订阅或文件</h2>
+        <label for="urls">订阅链接 · 每行一个</label>
+        <textarea
+          id="urls"
+          rows="5"
+          spellcheck="false"
+          placeholder="https://example.com/subscribe?token=..."
+        ></textarea>
+        <button id="fetch">读取并整合订阅</button>
+        <label for="files">添加本地 YAML 文件 · 支持多个</label>
+        <input id="files" type="file" accept=".yaml,.yml,.txt" multiple />
+        <label for="content">也可以直接粘贴 Clash / Mihomo YAML 内容</label>
+        <textarea
+          id="content"
+          rows="5"
+          spellcheck="false"
+          placeholder="proxies:&#10;  - name: 日本节点&#10;    type: ..."
+        ></textarea>
+        <div class="actions">
+          <button id="add-content" class="secondary">添加文件内容</button
+          ><button id="clear-files" class="secondary">清空已添加的文件</button>
+        </div>
+        <p id="sources" class="muted"></p>
+      </section>
+      <section>
+        <h2>2. 自动过滤与分流</h2>
+        <p>香港节点和流量、到期等提示项自动排除，不需要逐个勾选。</p>
+        <label for="keywords"
+          >额外排除的名称关键词 · 可选，用逗号或换行分隔</label
+        >
+        <input id="keywords" placeholder="例如：美国, 实验" />
+        <div class="columns">
+          <div>
+            <label for="interval">自动检测间隔（秒）</label
+            ><input
+              id="interval"
+              type="number"
+              min="30"
+              max="3600"
+              value="180"
+            />
+          </div>
+          <div>
+            <label for="tolerance">切换容差（毫秒）</label
+            ><input
+              id="tolerance"
+              type="number"
+              min="0"
+              max="1000"
+              value="50"
+            />
+          </div>
+        </div>
+        <p class="muted">
+          每 3
+          分钟检测连通性和延迟；容差减少小幅波动带来的频繁切换。低延迟不保证下载速度或网站解锁。
+        </p>
+        <p>
+          <strong>直连：</strong>钉钉、小红书、B站、飞书、豆包。<br /><strong
+            >代理：</strong
+          >ChatGPT、YouTube、V2EX、Notion。其他网站国内 IP 直连，其余代理。
+        </p>
+        <label for="direct-domains">额外直连域名 · 可选，每行一个纯域名</label>
+        <textarea
+          id="direct-domains"
+          rows="3"
+          placeholder="example.com"
+        ></textarea>
+      </section>
+      <section>
+        <h2>3. 检测并生成配置</h2>
+        <div class="actions">
+          <button id="export">检测节点并下载 YAML</button
+          ><button id="save-settings" class="secondary">保存本地设置</button>
+        </div>
+        <p id="status" role="status" aria-live="polite">正在初始化…</p>
+        <p id="summary" class="summary"></p>
+        <details>
+          <summary>查看候选节点和过滤原因</summary>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>节点</th>
+                  <th>来源</th>
+                  <th>结果</th>
+                </tr>
+              </thead>
+              <tbody id="nodes"></tbody>
+            </table>
+          </div>
+        </details>
+        <p class="muted">
+          导入客户端后启用「规则模式」，在「节点选择」中选「自动选择（排除香港）」。本地
+          YAML 是快照；订阅节点更新后，重新读取并导出。此工具不接管现有客户端。
+        </p>
+      </section>
+      <footer>
+        订阅只在你的电脑与订阅服务商之间传输，不经过第三方转换服务。域名清单覆盖常见主站及部分资源域名，可自行补充。仅凭节点名称无法确认真实出口地区。
+      </footer>
+    </main>
+  </body>
+</html>
