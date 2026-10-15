@@ -34,11 +34,19 @@ Git 仓库不附带 Mihomo 可执行文件。需要检测节点时，从 [Mihomo
 1. 输入订阅链接，每行一个，点击“读取并整合订阅”。也可以上传多个 YAML 文件，或填写机场名称、粘贴文件内容后点击“添加文件内容”。这几种来源可以一起整合。
 2. 如需额外排除节点，在“名称关键词”中填写关键词；如需直连其他网站，填写纯域名，不带协议、路径或通配符。
 3. 点击“检测节点并下载 YAML”。数百个节点可能需要数分钟，页面会显示进度。
-4. 将下载的 `clash-filtered.yaml` 导入 Mihomo 客户端，启用**规则模式**，在“节点选择”中选择“自动选择（排除香港）”。客户端若恢复了之前的手选状态，需要重新选择自动组。
+4. 将下载的 `clash-filtered.yaml` 导入 Mihomo 客户端，启用**规则模式**，在“节点选择”中选择“机场均衡（排除香港）”。客户端可能恢复旧的选择，更新配置后请手动确认。希望优先使用全局低延迟节点时，仍可选择“自动选择（排除香港）”或手选节点。
 
-FlClash 在自动组中点击具体节点会固定选择；再次点击已选中的节点卡片可取消固定、恢复自动选择（[v0.8.93 实现](https://github.com/chen08209/FlClash/blob/v0.8.93/lib/views/proxies/card.dart#L93-L109)）。更新 YAML 后若仍显示旧节点，应作为新配置导入并选择自动组。
+FlClash 在自动组中点击具体节点会固定选择；再次点击已选中的节点卡片可取消固定、恢复自动选择（[v0.8.93 实现](https://github.com/chen08209/FlClash/blob/v0.8.93/lib/views/proxies/card.dart#L93-L109)）。更新 YAML 后若仍显示旧节点，应作为新配置导入，并在“节点选择”中选择“机场均衡（排除香港）”。
 
 配置也会写入 `output/clash-filtered.yaml`，检测记录写入 `output/health-report.local.json`。导出后可以关闭本工具，之后的定期检测和自动切换由客户端执行。
+
+## 在 FlClash 中给其他订阅复用香港过滤
+
+如果只想对原订阅的策略组排除香港，可使用 [flclash-exclude-hk.js](flclash-exclude-hk.js)，保留原订阅的规则、节点参数和选节点方式。
+
+FlClash 0.8.93：进入订阅卡片的“更多 → 覆写 → 脚本”，点击“前往配置脚本 → 添加”，粘贴该文件的全部内容，保存为“排除香港”。返回订阅的脚本列表，选中它。其他订阅也各自选择同一份脚本即可；重新生成配置时会再次应用，不需复制整套策略组与规则。
+
+脚本为所有已有策略组追加 `exclude-filter`，保留原有排除条件。匹配中文香港、HK、Hong Kong 或旗帜的候选会被排除，组被过滤空时使用 `REJECT`。它按名称过滤策略组候选，不删除原节点定义、不检测真实出口地区，也不对规则直接指向某个节点或节点的链式依赖做改写。请使用规则模式并选择过滤后的策略组。
 
 ## 过滤、检测与分流
 
@@ -46,6 +54,8 @@ FlClash 在自动组中点击具体节点会固定选择；再次点击已选中
 - 导出前使用与导出配置相同的 DNS，通过独立 Mihomo 内核访问 `https://www.gstatic.com/generate_204`，要求 HTTPS 返回 204。单次超时 5 秒，失败重试一次，8 路并发。首轮通过的节点会用新启动的内核复测，两轮均通过才导出；失败或缺少检测结果的节点自动剔除。
 - 检测使用随机本地控制端口、随机认证信息和独立临时目录，不读取或修改当前客户端配置、系统代理或 TUN，检测结束后退出。
 - 导出配置的自动组按检测延迟排列候选节点，默认每 120 秒检测一次，切换容差 30 毫秒，检测超时 5 秒；连接失败次数超过 2 次时触发提前检查。测试地址和预期状态与导出前检测一致。客户端自动组切换节点，不会删除后来失败的节点。客户端在自动组中手动指定节点时，应恢复自动选择，才能按延迟切换。
+- 默认“机场均衡”按来源名称为每个机场建立自动选择组，再用 `load-balance / round-robin` 在机场之间轮询新连接，每个机场一个席位，不因节点数更多而增加份额。外层同样定期检测机场组，检测为不可用的组会暂时跳过，恢复后重新参与；故障检测需要时间，不保证失败连接即时重试。只有一个机场时仍可使用，导出前没有可用节点的机场不生成组。
+- 机场名称去除首尾空白与 `.yaml` / `.yml` / `.txt` 扩展名后归组；相同名称合并，不同名称视为不同机场。这只是按来源名称分组，不会识别真实运营商、剩余流量或套餐额度。轮询分配连接，不保证流量字节数均分，也不迁移已建立的长连接。同一网站的新连接可能跨机场、跨地区，需要稳定出口时切回全局自动组或手选节点。
 - 默认钉钉、小红书、B站、飞书、豆包及部分资源域名直连；ChatGPT、YouTube、V2EX、Notion 及部分资源域名走“节点选择”。额外直连域名优先，其他国内 IP 直连，其余代理。具体清单见 `filter.js`。
 - 节点名称使用“机场名 · 原节点名”，同名冲突时在末尾加序号。在线订阅优先使用响应头中的 `profile-title`（支持 `base64:` 编码），其次使用下载文件名；均未提供时使用订阅域名。本地文件使用不带扩展名的文件名，粘贴内容使用填写的机场名称。
 - 节点的协议参数会保留，名称和已验证的链式引用会同步重命名。依赖已排除节点的链路也会排除。
@@ -77,6 +87,7 @@ FlClash 在自动组中点击具体节点会固定选择；再次点击已选中
 
 ```bash
 node --test test-filter.js
+node --test test-flclash-script.js
 python3 -m unittest test_app.py test_probe.py
 ```
 
@@ -86,4 +97,4 @@ python3 -m unittest test_app.py test_probe.py
 
 本工具原创代码使用 [MIT License](LICENSE)。第三方组件见 [THIRD_PARTY.md](THIRD_PARTY.md)。
 
-行为依据：[Mihomo 自动选择组](https://wiki.metacubex.one/en/config/proxy-groups/url-test/)、[组检测参数](https://wiki.metacubex.one/en/config/proxy-groups/)、[规则顺序与域名后缀](https://wiki.metacubex.one/en/config/rules/)。
+行为依据：[Mihomo 自动选择组](https://wiki.metacubex.one/en/config/proxy-groups/url-test/)、[负载均衡](https://wiki.metacubex.one/en/config/proxy-groups/load-balance/)、[组检测参数](https://wiki.metacubex.one/en/config/proxy-groups/)、[规则顺序与域名后缀](https://wiki.metacubex.one/en/config/rules/)。

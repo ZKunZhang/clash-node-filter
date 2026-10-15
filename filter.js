@@ -1,6 +1,7 @@
 (function (root) {
   "use strict";
   const AUTO = "自动选择（排除香港）";
+  const BALANCE = "机场均衡（排除香港）";
   const SELECT = "节点选择";
   const DNS_CONFIG = {
     enable: true,
@@ -125,7 +126,7 @@
         }
         if (refs.has(reference)) node["dialer-proxy"] = refs.get(reference);
         node.name = refs.get(originalName);
-        return { id: node.name, originalName, source: source.label, node };
+        return { id: node.name, originalName, source: source.label, airport: label, node };
       });
     });
   }
@@ -198,12 +199,36 @@
         ? value
         : Infinity;
     };
-    const automaticNames = [...result.kept]
-      .sort((a, b) => {
-        const left = delay(a), right = delay(b);
-        return left === right ? 0 : left < right ? -1 : 1;
-      })
-      .map((r) => r.node.name);
+    const sorted = [...result.kept].sort((a, b) => {
+      const left = delay(a), right = delay(b);
+      return left === right ? 0 : left < right ? -1 : 1;
+    });
+    const checkOptions = {
+      url: "https://www.gstatic.com/generate_204",
+      interval,
+      lazy: false,
+      timeout: 5000,
+      "max-failed-times": 2,
+      "expected-status": 204,
+    };
+    const automaticGroup = (name, proxies) => ({
+      name, type: "url-test", proxies, ...checkOptions, tolerance,
+    });
+    // One seat per normalized source name, regardless of its node count.
+    const airports = new Map();
+    for (const r of sorted) {
+      if (!airports.has(r.airport)) airports.set(r.airport, []);
+      airports.get(r.airport).push(r.node.name);
+    }
+    const usedNames = new Set([SELECT, AUTO, BALANCE, "DIRECT", "REJECT", ...names]);
+    const airportGroups = [...airports].map(([airport, proxies]) => {
+      const base = `${airport} · 自动选择`;
+      let name = base;
+      let suffix = 2;
+      while (usedNames.has(name)) name = `${base} (${suffix++})`;
+      usedNames.add(name);
+      return automaticGroup(name, proxies);
+    });
     const config = {
       "mixed-port": 7890,
       "allow-lan": false,
@@ -212,19 +237,16 @@
       dns: { ...DNS_CONFIG, nameserver: [...DNS_CONFIG.nameserver] },
       proxies: result.kept.map((r) => r.node),
       "proxy-groups": [
-        { name: SELECT, type: "select", proxies: [AUTO, ...names] },
+        { name: SELECT, type: "select", proxies: [BALANCE, AUTO, ...names] },
+        automaticGroup(AUTO, sorted.map((r) => r.node.name)),
         {
-          name: AUTO,
-          type: "url-test",
-          proxies: automaticNames,
-          url: "https://www.gstatic.com/generate_204",
-          interval,
-          tolerance,
-          lazy: false,
-          timeout: 5000,
-          "max-failed-times": 2,
-          "expected-status": 204,
+          name: BALANCE,
+          type: "load-balance",
+          strategy: "round-robin",
+          proxies: airportGroups.map((g) => g.name),
+          ...checkOptions,
         },
+        ...airportGroups,
       ],
       rules: [
         ...directDomains.map((d) => `DOMAIN-SUFFIX,${d.toLowerCase()},DIRECT`),
@@ -254,6 +276,7 @@
   }
   const api = {
     AUTO,
+    BALANCE,
     SELECT,
     DNS_CONFIG,
     DIRECT_DOMAINS,
